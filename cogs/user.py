@@ -293,14 +293,14 @@ class User(commands.Cog):
             return
         else:
             verify_id = messages[0]
-            discordId = ctx.author.id
+            discordId = str([ctx.author.id][0])
             res = glob.db.fetch(
-                "SELECT `userid`, `verify_id` FROM `discord_roles` WHERE `discordid` = '{}'".format(discordId)
+                "SELECT `userid`, `discordid` FROM `discord_roles` WHERE `verify_id` = '{}'".format(verify_id)
             )
             if res and res['userid']:
                 await ctx.send('You already linked your osu! account')
                 return
-            elif res and (res['verify_id'] == verify_id):
+            elif res:
                 glob.db.execute(
                     "UPDATE `discord_roles` SET `discordid` = '{}' WHERE `discord_roles`.`verify_id` = '{}'".format(discordId, verify_id)
                 )
