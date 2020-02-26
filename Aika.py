@@ -100,21 +100,18 @@ async def on_ready() -> None:
           end = '\n\n',
           sep = '\n'
     )
-
-    if glob.config['server_build'] and mismatch:
-        # Configure, and send the embed to #general.
-        announce_online = discord.Embed(
-            title       = f"Hello everyone!",
-            description = "Ready for commands <3\n\n"
-                          "Zekchika is a modified version of Aika for osuvnfc.xyz ;)\n\n"
-                          "Aika is osu!Akatsuki's [open source](https://github.com/osuAkatsuki/Aika) discord bot.\n",
-            color       = 0x00ff00)                                     \
-        # .set_footer(icon_url=glob.config['crab_emoji'], text="Thank you for playing!") \
-        # .set_thumbnail(url=glob.config['akatsuki_logo'])
-
-        await bot.get_channel(glob.config['akatsuki_general_id']).send(embed=announce_online)
+    print(glob.config)
+    # Configure, and send the embed to #general.
+#    announce_online = discord.Embed(
+#        title       = f"Hello everyone!",
+#        description = "Ready for commands <3\n\n"
+#                      "Zekchika is a modified version of Aika for osuvnfc.xyz ;)\n\n"
+#                      "Aika is osu!Akatsuki's [open source](https://github.com/osuAkatsuki/Aika) discord bot.\n",
+#        color       = 0x00ff00)                                     \
+    # .set_footer(icon_url=glob.config['crab_emoji'], text="Thank you for playing!") \
+    # .set_thumbnail(url=glob.config['akatsuki_logo'])
+#    await bot.get_channel(int(glob.config['akatsuki_general_id'])).send(embed=announce_online)
     return
-
 
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member) -> None:
@@ -211,8 +208,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
     # .set_thumbnail(url   = glob.config['akatsuki_logo'])
 
     # Assign friends-only chat and voice channel as constants.
-    friends_only_text  = bot.get_channel(glob.config['akatsuki_friends_only'])
-    friends_only_voice = bot.get_channel(glob.config['akatsuki_friends_only_voice'])
+    friends_only_text  = bot.get_channel(int(glob.config['akatsuki_friends_only']))
+    friends_only_voice = bot.get_channel(int(glob.config['akatsuki_friends_only_voice']))
 
     # Send our embed, and add our base 👍.
     msg: Optional[discord.Message] = await friends_only_text.send(embed=embed)
@@ -253,7 +250,7 @@ async def on_message(message: discord.Message) -> None:
         if message.channel.id == glob.config['akatsuki_verify_id']:
             if not message.content.split()[-1].isdigit(): # bot
                 await message.author.add_roles(discord.utils.get(message.guild.roles, name='Members'))
-                await bot.get_channel(glob.config['akatsuki_general_id']).send(f'Welcome to osuvnfc <@{message.author.id}>!')
+                await bot.get_channel(int(glob.config['akatsuki_general_id'])).send(f'Welcome to osuvnfc <@{message.author.id}>!')
 
                 print(f'{colour.MAGENTA}Verified {message.author.name}#{message.author.discriminator}.\n')
 
@@ -364,7 +361,7 @@ async def on_message(message: discord.Message) -> None:
         # .set_footer   (text = f"Akatsuki's beatmap nomination system v{glob.config['abns_version']:.2f}", icon_url = glob.config['crab_emoji'])
 
         # Send the embed to the #rank_requests channel.
-        request_post = await bot.get_channel(glob.config['akatsuki_rank_requests_id']).send(embed=embed)
+        request_post = await bot.get_channel(int(glob.config['akatsuki_rank_requests_id'])).send(embed=embed)
 
         # Send the embed to the nominator by DM. TODO: check if we can message the user rather than abusing try-except? that might just be slower lul
         try: await message.author.send(embed=embed_dm)
@@ -394,7 +391,7 @@ async def on_message(message: discord.Message) -> None:
 
         if not message.content.startswith(glob.config['command_prefix']): # Do not pm or link to #reports if it is a command.
             await message.author.send(embed=embed_pm)
-            await bot.get_channel(glob.config['akatsuki_reports_id']).send(embed=embed)
+            await bot.get_channel(int(glob.config['akatsuki_reports_id'])).send(embed=embed)
         return
 
     # Message sent in #help, log to db.

@@ -10,7 +10,6 @@ from json import loads
 from time import time
 from hashlib import md5, sha1, sha224, sha256, sha384, sha512
 
-from Aika import bot
 
 from constants import mods
 from objects import glob
@@ -41,7 +40,7 @@ class User(commands.Cog):
 
         if not username_safe: # User didn't specify a username; use their connected osu!Akatsuki account if their Discord is linked..
             res: Optional[Dict[str, Union[str, int]]] = glob.db.fetch(
-                'SELECT users.username, users.username_safe, users.id FROM discord LEFT JOIN users ON discord_roles.userid = users.id WHERE discord.discordid = %s',
+                'SELECT users.username, users.username_safe, users.id FROM discord_roles LEFT JOIN users ON discord_roles.userid = users.id WHERE discord_roles.discordid = %s',
                 [ctx.author.id]
             )
             if not res or not res['id']:
@@ -54,7 +53,7 @@ class User(commands.Cog):
                 return
 
         # Do API request to akatsuki-api.
-        r = get(f'https://osuvnfc.xyz/api/v1/users/scores/recent?id={res["id"]}&l=1&rx={"1" if rx else "0"}', timeout=1.50).json()
+        r = get(f'http://localhost:40001/api/v1/users/scores/recent?id={res["id"]}&l=1&rx={"1" if rx else "0"}', timeout=10).json()
         if not r or int(r['code']) != 200:
             await ctx.send('An error occured while attempting to fetch data from the API.\n\nPlease try again later.')
             return
@@ -70,7 +69,7 @@ class User(commands.Cog):
             description = f'** **', # bad idea to strptime?
             url = f"https://osuvnfc.xyz/b/{score['beatmap']['beatmap_id']}") \
         .set_image(url = f"https://assets.ppy.sh/beatmaps/{score['beatmap']['beatmapset_id']}/covers/cover.jpg?1522396856") \
-        .set_footer(text = f'Score submitted on {"Relax" if score["mods"] & mods.RELAX else "Vanilla"} @ {d.strptime(score["time"], "%Y-%m-%dT%H:%M:%SZ").strftime("%-I:%M%p %b %d %Y")}.') \
+        .set_footer(text = f'Score submitted on {"Relax" if score["mods"] & mods.RELAX else "Vanilla"} @ {d.strptime(score["time"], "%Y-%m-%dT%H:%M:%S+07:00").strftime("%-I:%M%p %b %d %Y")}.') \
         .set_thumbnail(url = glob.config['akatsuki_logo']) \
         .set_author(
             url      = f'https://osuvnfc.xyz/u/{res["id"]}',
@@ -297,7 +296,7 @@ class User(commands.Cog):
             res = glob.db.fetch(
                 "SELECT `userid`, `discordid` FROM `discord_roles` WHERE `verify_id` = '{}'".format(verify_id)
             )
-            if res and res['userid']:
+            if res and res['discordid']:
                 await ctx.send('You already linked your osu! account')
                 return
             elif res:
@@ -307,13 +306,13 @@ class User(commands.Cog):
                 osu_username = glob.db.fetch(
                     "SELECT `username` FROM `users` WHERE `id` = '{}'".format(res['userid'])
                 )
-                await bot.change_nickname(ctx.message.author, osu_username['username'])
+                await ctx.message.author.edit(nick=osu_username['username'])
                 role = discord.utils.get(ctx.message.guild.roles, name='Verified')
                 await ctx.author.add_roles(role)
-                await ctx.send('Welcome to osuvnfc.xyz {}!').format(osu_username['username'])
+                await ctx.send('Welcome to osuvnfc.xyz {}!'.format(osu_username['username']))
                 return
             else:
-                await ctx.send('You need to chat !linkdiscord ingame chat before doing this.')
+                await ctx.send('Bad secret key I guess ? Hope it not an error.')
                 return
 
     @commands.command(
@@ -321,7 +320,7 @@ class User(commands.Cog):
         description = 'Syncs your roles from the osuvnfc server to the Discord.'
     )
     async def sync_osu_roles(self, ctx) -> None:
-        res = glob.db.fetch('SELECT privileges FROM users LEFT JOIN discord ON users.id = discord_roles.userid WHERE discordid = %s', [ctx.author.id]) # broke?
+        res = glob.db.fetch('SELECT privileges FROM users LEFT JOIN discord_roles ON users.id = discord_roles.userid WHERE discordid = %s', [ctx.author.id]) # broke?
         if not res:
             await ctx.send("It doesn't seem like your Discord is linked to an osuvnfc account.\nYou can link one by using the `!linkosu` command.")
             return
@@ -336,6 +335,68 @@ class User(commands.Cog):
         await ctx.send('Your roles have been synced.')
         return
 
+    @commands.command(
+        name        = 'changeme',
+        description = 'Change your username'
+    )
+    async def changeme(self, ctx) -> None:
+        messages: List[str] = ctx.message.content.split(' ')[1:]
+        if (len(messages) != 1):
+            await ctx.send('Wrong syntax. !changeme <new_username>')
+            return
+        new_username = messages[0]
+        res = glob.db.fetch(
+            "SELECT privileges, users.id AS id FROM users LEFT JOIN discord_roles ON users.id = discord_roles.userid WHERE discordid = '{}';".format(str([ctx.author.id][0]))
+        )
+        print(res)
+        if not res:
+            await ctx.send("It doesn't seem like your Discord is linked to an osuvnfc account.\nYou can link one by using the `!linkosu` command.")
+            return
+        userID = res['id']
+        print(userID)
+        def changeUserName(userID, name):
+            glob.db.execute(
+                "UPDATE `users` SET `username` = '{}', `username_safe` = '{}' WHERE `users`.`id` = {};".format(name, name.lower(), userID)
+            )
+            glob.db.execute(
+                "UPDATE `users_stats` SET `username` = '{}' WHERE `users_stats`.`id` = {};".format(name, userID)
+            )
+            glob.db.execute(
+                "UPDATE `rx_stats` SET `username` = '{}' WHERE `rx_stats`.`id` = {};".format(name, userID)
+            )
+
+        if (res['privileges'] & 7):
+            dateDiff = glob.db.fetch(
+                "SELECT DATEDIFF(CURRENT_TIMESTAMP, `last_change`) AS DATEDIFF FROM `name_change_log` WHERE `userid` = '{}'".format(userID)
+            )
+            cooldownTime = 14
+            try:
+                if (dateDiff is None):
+                    changeUserName(userID, new_username)
+                    glob.db.execute(
+                        "INSERT INTO `name_change_log` (`userid`, `last_change`, `changeid`) VALUES ('{}', CURRENT_TIMESTAMP, NULL);".format(userID)
+                    )
+                    await ctx.message.author.edit(nick=new_username)
+                    await ctx.send("Your username has been updated. Please login again.")
+                    return
+                elif (int(dateDiff['DATEDIFF']) > cooldownTime):
+                    changeUserName(userID, new_username)
+                    glob.db.execute(
+                        "UPDATE `name_change_log` SET `last_change` = CURRENT_TIMESTAMP WHERE `name_change_log`.`userid` = {}".format(userID)
+                    )
+                    await ctx.message.author.edit(nick=new_username)
+                    await ctx.send("Your username has been updated. Please login again.")
+                    return
+                else:
+                    await ctx.send("Not so soon mate. You can change your username after {} days".format(cooldownTime))
+                    return
+            except Exception as err:
+                await ctx.send(str(err))
+                #await ctx.send("Something wrong happens. Please report to owner.")
+                return
+        else:
+            await ctx.send("Uh oh it seems like you are not Donor yet. Dua 50k day thi cho doi ten.")
+            return
 
     @commands.command(
         name        = 'rawfrom',
